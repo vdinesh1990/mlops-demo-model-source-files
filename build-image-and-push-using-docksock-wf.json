@@ -1,0 +1,136 @@
+{
+    "apiVersion": "argoproj.io/v1alpha1",
+    "kind": "Workflow",
+    "metadata": {
+        "generateName": "build-image-and-push-"
+    },
+    "spec": {
+        "arguments": {
+            "parameters": [
+                {
+                    "name": "model-version",
+                    "value": "%MODEL_VERSION%"
+                },
+                {
+                    "name": "github-user",
+                    "value": "%GITHUB_USER%"
+                },
+                {
+                    "name": "github-token",
+                    "value": "%GITHUB_TOKEN%"
+                }
+            ]
+        },
+        "entrypoint": "build-steps",
+        "templates": [
+            {
+                "name": "build-steps",
+                "steps": [
+                    [
+                        {
+                            "arguments": {
+                                "parameters": [
+                                    {
+                                        "name": "cmdargs",
+                                        "value": "curl -s activity-monitor.default.svc.cluster.local:80/?'(ARGO) build-image-and-push-using-docksock-wf run for {{workflow.parameters.model-version}}' > /dev/null"
+                                    }
+                                ]
+                            },
+                            "name": "activity-monitor",
+                            "template": "image-builder"
+                        }
+                    ],
+                    [
+                        {
+                            "arguments": {
+                                "parameters": [
+                                    {
+                                        "name": "cmdargs",
+                                        "value": "until docker ps; do sleep 3; done; set -x && cd /work/model-source-files/models/mlflow_model && make MODEL_VERSION={{workflow.parameters.model-version}} build_model_image && docker images && docker images | grep mlflow_model && make MODEL_VERSION={{workflow.parameters.model-version}} push_to_registry"
+                                    }
+                                ]
+                            },
+                            "name": "build-image",
+                            "template": "image-builder"
+                        }
+                    ]
+                ]
+            },
+            {
+                "container": {
+                    "args": [
+                        "{{inputs.parameters.cmdargs}}"
+                    ],
+                    "command": [
+                        "sh",
+                        "-c"
+                    ],
+                    "image": "gsunner/s2i-tools:0.1",
+                    "volumeMounts": [
+                        {
+                            "mountPath": "/var/run/docker.sock",
+                            "name": "docker-sock-volume"
+                        }
+                    ]
+                },
+                "inputs": {
+                    "artifacts": [
+                        {
+                            "git": {
+                                "repo": "https://{{workflow.parameters.github-user}}:{{workflow.parameters.github-token}}@github.com/{{workflow.parameters.github-user}}/mlops-demo-model-source-files.git",
+                                "revision": "master"
+                            },
+                            "name": "model-source-files",
+                            "path": "/work/model-source-files"
+                        }
+                    ],
+                    "parameters": [
+                        {
+                            "name": "cmdargs"
+                        }
+                    ]
+                },
+                "name": "image-builder"
+            },
+            {
+                "container": {
+                    "args": [
+                        "{{inputs.parameters.cmdargs}}"
+                    ],
+                    "command": [
+                        "sh",
+                        "-c"
+                    ],
+                    "image": "seldonio/k8s-deployer:k8s_v1.9.0"
+                },
+                "inputs": {
+                    "artifacts": [
+                        {
+                            "git": {
+                                "repo": "https://{{workflow.parameters.github-user}}:{{workflow.parameters.github-token}}@github.com/{{workflow.parameters.github-user}}/cicd-demo-k8s-manifest-files.git",
+                                "revision": "master"
+                            },
+                            "name": "k8s-manifest-files",
+                            "path": "/work/k8s-manifest-files"
+                        }
+                    ],
+                    "parameters": [
+                        {
+                            "name": "cmdargs"
+                        }
+                    ]
+                },
+                "name": "manifest-updater"
+            }
+        ],
+        "volumes": [
+            {
+                "hostPath": {
+                    "path": "/var/run/docker.sock",
+                    "type": "File"
+                },
+                "name": "docker-sock-volume"
+            }
+        ]
+    }
+}
