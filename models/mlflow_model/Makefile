@@ -6,7 +6,7 @@ watch_docker:
 	@watch -n 1 'docker ps -a'
 
 build_model_image:
-	s2i build -E environment_rest . seldonio/seldon-core-s2i-python3:0.13 $(IMAGE_NAME):$(MODEL_VERSION) --loglevel=5 --save-temp-dir=true &> /tmp/s2i.log
+	s2i build -E environment_rest . seldonio/seldon-core-s2i-python3:0.13 $(IMAGE_NAME):$(MODEL_VERSION)
 
 push_to_registry:
 	docker push $(IMAGE_NAME):$(MODEL_VERSION)
